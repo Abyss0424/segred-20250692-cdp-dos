@@ -1,51 +1,51 @@
 # Attack-01 — CDP DoS (Neighbor Table Exhaustion)
 
-> **Autor:** [Tu nombre]  
+> **Autor:** Julio Pujols  
 > **Matrícula:** 20250692  
 > **Red asignada:** 192.168.92.0/24  
-> **Curso:** [Nombre del curso]  
-> **Fecha:** [Fecha]
+> **Video demostrativo:** <https://youtu.be/SvFNp0AOb4w>
 
----
+-----
 
 ## 1. Objetivo del Laboratorio
 
 Demostrar el ataque **CDP DoS** mediante la saturación de la tabla de vecinos CDP
 del switch objetivo usando frames CDP con Device-IDs aleatorios, y aplicar
-la contramedida `no cdp enable` para mitigarlo.
+la contramedida correspondiente para mitigarlo en un entorno de laboratorio aislado
+sobre infraestructura Cisco virtualizada (PNETLab + vIOS-L2).
 
----
+-----
 
 ## 2. Objetivo del Script
 
-`cdp_dos.py` genera frames CDP con identificadores de dispositivo y MACs
-de origen aleatorios a máxima velocidad, saturando la tabla de vecinos CDP
-del switch hasta causar consumo elevado de CPU y desplazamiento de entradas legítimas.
+`cdp_dos.py` genera frames CDP con identificadores de dispositivo y MACs de origen
+aleatorios a máxima velocidad, saturando la tabla de vecinos CDP del switch hasta
+causar consumo elevado de CPU y desplazamiento de entradas legítimas.
 
 ### 2.1 Parámetros
 
-| Parámetro | Descripción | Ejemplo |
-|---|---|---|
-| `-i / --iface` | Interfaz de red del atacante | `eth0` |
-| `-r / --rate` | Paquetes por segundo (0 = máximo) | `100` |
-| `-c / --count` | Total de paquetes (0 = infinito) | `500` |
+|Parámetro     |Descripción                      |Ejemplo|
+|--------------|---------------------------------|-------|
+|`-i / --iface`|Interfaz de red del atacante     |`eth0` |
+|`-r / --rate` |Paquetes por segundo (0 = máximo)|`100`  |
+|`-c / --count`|Total de paquetes (0 = infinito) |`500`  |
 
 ### 2.2 Requisitos
 
-| Requisito | Versión |
-|---|---|
-| Python | 3.6+ |
-| Scapy | >= 2.4.0 (con contrib CDP) |
-| SO | Linux / Kali |
-| Privilegios | root / sudo |
+|Requisito  |Versión                   |
+|-----------|--------------------------|
+|Python     |3.6+                      |
+|Scapy      |>= 2.4.0 (con contrib CDP)|
+|SO         |Linux / Kali              |
+|Privilegios|root / sudo               |
 
 ```bash
-pip install scapy
+pip install -r requirements.txt
 # o en Kali:
 sudo apt install python3-scapy
 ```
 
----
+-----
 
 ## 3. Funcionamiento del Script
 
@@ -77,15 +77,14 @@ sudo apt install python3-scapy
               └─[ CDPMsgPlatform ]
 ```
 
-**Por qué Dot3 y no Ether:** CDP usa IEEE 802.3 (campo `length` en bytes 12-13),
-no Ethernet DIX (EtherType). Usar `Ether` generaría un frame inválido que el switch
-podría rechazar.
+**Por qué Dot3 y no Ether:** CDP usa IEEE 802.3 (campo `length`), no Ethernet DIX
+(EtherType). Usar `Ether` generaría un frame inválido que el switch rechazaría.
 
 **Por qué Device-ID aleatorio:** cada Device-ID único genera una entrada separada
 en la tabla CDP del switch. Sin aleatoriedad, el switch actualizaría la misma entrada
 y no habría saturación.
 
----
+-----
 
 ## 4. Documentación de la Red
 
@@ -102,23 +101,33 @@ y no habría saturación.
         Gi0/3 ── trunk ──────────► SW2
 ```
 
-### Direccionamiento
+### Direccionamiento e interfaces
 
-| Dispositivo | Interfaz | IP/Máscara | VLAN | Rol |
-|---|---|---|---|---|
-| R1 | Gi0/0 | 192.168.92.1/24 | 10 | Gateway + DHCP server |
-| SW1 | Gi0/1 | — | 10 acc | Puerto atacante |
-| SW1 | Gi0/2 | — | 10 acc | Puerto Victim1 |
-| SW1 | Gi0/3 | — | trunk | Uplink SW2 |
-| Attacker | eth0 | 192.168.92.x (DHCP) | 10 | Atacante (Kali) |
-| Victim1 | eth0 | 192.168.92.x (DHCP) | 10 | Víctima |
-| Victim2 | e0 | 192.168.92.x (DHCP) | 10 | Víctima 2 |
+|Dispositivo|Interfaz|IP/Máscara         |VLAN  |Rol                  |
+|-----------|--------|-------------------|------|---------------------|
+|R1         |Gi0/0   |192.168.92.1/24    |10    |Gateway + DHCP server|
+|SW1        |Gi0/0   |—                  |10 acc|Uplink a R1          |
+|SW1        |Gi0/1   |—                  |10 acc|Puerto atacante      |
+|SW1        |Gi0/2   |—                  |10 acc|Puerto Victim1       |
+|SW1        |Gi0/3   |—                  |trunk |Uplink a SW2         |
+|SW2        |Gi0/0   |—                  |trunk |Uplink a SW1         |
+|SW2        |Gi0/1   |—                  |10 acc|Puerto Victim2       |
+|Attacker   |eth0    |192.168.92.x (DHCP)|10    |Atacante (Kali)      |
+|Victim1    |eth0    |192.168.92.x (DHCP)|10    |Víctima              |
+|Victim2    |e0      |192.168.92.x (DHCP)|10    |Víctima 2 (VPCS)     |
 
----
+### VLANs
+
+|VLAN |Nombre|Puertos                                 |
+|-----|------|----------------------------------------|
+|10   |USERS |SW1 Gi0/0–2 (access), SW2 Gi0/1 (access)|
+|trunk|—     |SW1 Gi0/3 ↔ SW2 Gi0/0 (802.1q)          |
+
+-----
 
 ## 5. Ejecución
 
-### Estado inicial (antes del ataque)
+### Estado inicial
 
 ```
 SW1# show cdp neighbors
@@ -138,21 +147,15 @@ SW1# show cdp neighbors          ! tabla crece con entradas aleatorias
 SW1# show processes cpu | i CDP  ! CPU sube por procesamiento CDP
 ```
 
-### Capturas de pantalla
-
-![Antes del ataque](screenshots/01_antes.png)
-![Ataque en ejecución](screenshots/02_ataque.png)
-![Impacto en SW1](screenshots/03_sw1_durante.png)
-
----
+-----
 
 ## 6. Contramedida
 
 ### Mecanismo
 
-Deshabilitar CDP en el puerto del atacante impide que el switch procese
-los frames CDP recibidos por esa interfaz. El switch descarta los frames
-a nivel de puerto antes de que lleguen al proceso CDP, eliminando el vector de ataque.
+Deshabilitar CDP en el puerto del atacante impide que el switch procese los frames
+CDP recibidos por esa interfaz. El switch los descarta a nivel de puerto antes de que
+lleguen al proceso CDP, eliminando el vector de ataque.
 
 ### Configuración en SW1
 
@@ -173,30 +176,22 @@ SW1# show cdp neighbors
 ! El atacante ya no genera nuevas entradas
 ```
 
-### Re-ejecución del ataque con contramedida activa
+### Resultado con contramedida activa
 
-```bash
-sudo python3 cdp_dos.py -i eth0
-# Script sigue enviando, pero SW1 descarta los frames silenciosamente
-```
+Al re-ejecutar el ataque, el switch descarta silenciosamente los frames CDP del
+puerto del atacante. La tabla permanece estable mostrando solo R1 y SW2.
+Las entradas falsas previas expiran automáticamente en 180 segundos (TTL del CDP).
 
-```
-SW1# show cdp neighbors
-! Tabla estable — solo R1 y SW2 como vecinos legítimos
-```
-
-![Contramedida aplicada](screenshots/04_contramedida.png)
-
----
+-----
 
 ## 7. Conclusiones
 
-[Redactar con tus propias palabras]
+Durante este laboratorio pude comprobar lo sencillo que es saturar la tabla de vecinos CDP de un switch. Cuando lancé el script vi cómo la tabla se llenaba rápidamente de entradas falsas, cada una con un Device-ID distinto, y me di cuenta de que el switch las aceptaba todas sin ninguna validación. Al revisar el uso de CPU noté que el proceso CDP consumía más recursos a medida que llegaban más paquetes.
 
----
+## Lo que más me llamó la atención al aplicar la contramedida fue que, al ejecutar `no cdp enable` en el puerto del atacante, la tabla dejó de crecer de inmediato, pero las entradas falsas que ya estaban no desaparecieron al instante: tuve que esperar a que expiraran solas por el TTL de 180 segundos del propio protocolo. Con esto entendí que CDP solo debería estar habilitado en enlaces entre dispositivos Cisco de confianza, y que dejarlo activo en puertos de usuario es un riesgo innecesario que no aporta ningún beneficio.
 
 ## 8. Referencias
 
 - IEEE 802.3 — Ethernet Standard
 - Cisco CDP Specification (Cisco IOS Configuration Guide)
-- Scapy Documentation: https://scapy.readthedocs.io/en/latest/api/scapy.contrib.cdp.html
+- Scapy Documentation: <https://scapy.readthedocs.io/en/latest/api/scapy.contrib.cdp.html>
