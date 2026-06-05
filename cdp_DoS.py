@@ -11,7 +11,7 @@ Mecanismo:
   - Cada Device-ID único genera una nueva entrada en la tabla CDP
   - Tabla llena → CPU spike / entradas legítimas desplazadas
 
-Autor     : [Tu nombre] — Matrícula: 20250692
+Autor     : Julio Pujols — Matrícula: 20250692
 Red       : 192.168.92.0/24
 Requisitos: Python 3.6+ | Scapy >= 2.4.0 | root/sudo
 [LAB]     : Uso exclusivo en entorno de laboratorio aislado.
